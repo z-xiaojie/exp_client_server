@@ -405,7 +405,7 @@ def send_msg(c, msg):
 
 
 def recv_helper(s, opt, all_path):
-    max_inx = 300
+    max_inx = opt.number
     rate = opt.rate * 1024 / 8 # KB
     while True:
         try:
@@ -448,7 +448,7 @@ def recv_helper(s, opt, all_path):
 # 28880
 def send_helper(s, opt, all_path):
     current_img_path_inx = 0
-    max_inx = 300
+    max_inx = opt.number
     while True:
         try:
             current = time.time()
@@ -492,7 +492,7 @@ def send_helper(s, opt, all_path):
             print("2 res=", list(np.array(response)))
             break
     print("all sent")
-    print("res=", list(np.array(response)))
+    # print("res=", list(np.array(response)))
 
 import argparse
 import socket
@@ -517,6 +517,7 @@ if __name__ == "__main__":
     parser.add_argument("--type", type=str, default="png", help="path to weights file")
     parser.add_argument("--rate", type=int, default="10", help="path to weights file")
     parser.add_argument("--app", type=str, default="yolo", help="path to weights file")
+    parser.add_argument("--number", type=int, default="300", help="path to weights file")
     opt = parser.parse_args()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -604,7 +605,7 @@ if __name__ == "__main__":
             s.close()
             print(e.__str__())
 
-    print("res=", list(np.array(response)))
+    print("res=", list(np.array(response[:300])))
 
     #  50  + response:0.621s,compress:0.144,compute:0.208,transmit:0.028,file:[120.77] KB, rate: 4317.92 KB/s
     #  50  + response:0.310s,compress:0.143,compute:0.216,transmit:0.083,file:[120.77] KB, rate: 1454.80 KB/s
