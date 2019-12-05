@@ -14,6 +14,6 @@ else
     git pull $REPOSRC
 fi
 
-cp exp_client_server/main.py /home/zxj/PyTorch-YOLOv3/data/coco/images/Crunch/src/main.py
+cp main.py /home/zxj/PyTorch-YOLOv3/data/coco/images/Crunch/src/main.py
 
 # End
