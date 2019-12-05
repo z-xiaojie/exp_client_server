@@ -14,6 +14,6 @@ else
     git pull $REPOSRC
 fi
 
-cp LOCALREPO/main.py /home/PyTorch-YOLOv3/data/coco/images/Crunch/src/main.py
+cp $LOCALREPO/main.py /home/PyTorch-YOLOv3/data/coco/images/Crunch/src/main.py
 
 # End
