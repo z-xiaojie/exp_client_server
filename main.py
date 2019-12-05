@@ -434,7 +434,7 @@ def recv_helper(s, opt, all_path):
                                np.average(compute_time),
                                np.average(transmission_time),
                                np.average(avg_size),
-                               np.array(cpu_utilization)
+                               np.average(cpu_utilization)
                                ))
                     if info["inx"] == max_inx - 1:
                         break
@@ -499,6 +499,10 @@ import socket
 import json
 import  base64
 from _thread import *
+
+#  3389: yolo 416
+#  8080: pose
+#  8001: yolo 608
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

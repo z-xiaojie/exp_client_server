@@ -292,7 +292,7 @@ class Server:
 if __name__ == '__main__':
     logging.basicConfig(level=logging.ERROR,
                         format="[%(asctime)s %(filename)s] %(message)s")
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         logging.error("Usage: python test_images.py params.py")
         sys.exit()
     params_path = sys.argv[1]
@@ -306,5 +306,5 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config["parallels"]))
     server = Server(config)
     print(pid)
-    server.run(port=sys.argv[2])
+    server.run(port=int(sys.argv[2]))
 
