@@ -492,7 +492,7 @@ def send_helper(s, opt, all_path):
             print("2 res=", list(np.array(response)))
             break
     print("all sent")
-    # print("res=", list(np.array(response)))
+    print("res=", list(np.array(response[:300])))
 
 import argparse
 import socket
