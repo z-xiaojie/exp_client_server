@@ -192,7 +192,7 @@ class Server:
                       , round(np.average(response),4)
                       , round(np.average(self.complex_yolo_416), 3)))
         # logging.info("Save all results to ./output/")
-        return computation_time
+        return computation_time, cpu * 100
 
     def detect_pose(self, name, response):
         start = time.time()
@@ -212,7 +212,7 @@ class Server:
               .format(round(cpu, 3), round(computation_time, 4)
                       , round(np.average(response), 4)
                       , round(np.average(self.complex_pose_438), 3)))
-        return computation_time
+        return computation_time, cpu * 100
 
     def run(self, port=3389):
         host = ""
@@ -273,10 +273,10 @@ class Server:
                         with open(self.config["images_path"] + path, 'wb') as file:
                             file.write(base64.b64decode(info["data"]))
                         if info["app"] == "yolo":
-                            compute_time = self.detect_image(path, response)
+                            compute_time, cpu = self.detect_image(path, response)
                         else:
-                            compute_time = self.detect_pose(path, response)
-                        message = {"code": 2, "time": time.time() - start, "inx": info["inx"],
+                            compute_time, cpu = self.detect_pose(path, response)
+                        message = {"code": 2, "time": time.time() - start, "inx": info["inx"], "cpu": cpu,
                                    "compute_time": compute_time, "path": path, "next": True, "timestamp": info["timestamp"]}
                         self.send_msg(c, json.dumps(message).encode("utf-8"))
                         response.append(round(time.time() - res_start, 3))

@@ -433,7 +433,6 @@ def recv_helper(s, opt, all_path):
                                np.average(avg_processing_time),
                                np.average(compute_time),
                                np.average(transmission_time),
-                               # np.average(avg_post_file_size) / 1024,
                                np.average(avg_size),
                                np.array(cpu_utilization)
                                ))
