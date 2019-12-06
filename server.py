@@ -33,7 +33,7 @@ from nets.yolo_loss import YOLOLoss
 from common.utils import non_max_suppression, bbox_iou
 import psutil
 import math
-
+from multiprocessing import Process, Manager
 from tf_pose import common
 import cv2
 import numpy as np
@@ -50,6 +50,93 @@ gpu = True if torch.cuda.is_available() else False
 lock = Lock()
 
 
+def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo_416):
+    start_time = time.time()
+    images_path = [os.path.join(config["images_path"], name)]
+    if len(images_path) == 0:
+        raise Exception("no image with name {} found in {}".format(name, config["images_path"]))
+    # Start inference
+    batch_size = config["batch_size"]
+    for step in range(0, len(images_path), batch_size):
+        images = []
+        images_origin = []
+        for path in images_path[step * batch_size: (step + 1) * batch_size]:
+            logging.info("processing: {}".format(path))
+            image = cv2.imread(path, cv2.IMREAD_COLOR)
+            if image is None:
+                logging.error("read path error: {}. skip it.".format(path))
+                continue
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            images_origin.append(image)  # keep for save result
+            image = cv2.resize(image, (config["img_w"], config["img_h"]),
+                               interpolation=cv2.INTER_LINEAR)
+            image = image.astype(np.float32)
+            image /= 255.0
+            image = np.transpose(image, (2, 0, 1))
+            image = image.astype(np.float32)
+            images.append(image)
+        images = np.asarray(images)
+        images = torch.from_numpy(images)
+
+        lock.acquire()
+        # inference
+        with torch.no_grad():
+            outputs = net(images)
+            output_list = []
+            for i in range(3):
+                output_list.append(yolo_losses[i](outputs[i]))
+            output = torch.cat(output_list, 1)
+            batch_detections = non_max_suppression(output, config["yolo"]["classes"],
+                                                   conf_thres=config["confidence_threshold"],
+                                                   nms_thres=0.45)
+        lock.release()
+        # write result images. Draw bounding boxes and labels of detections
+        if not os.path.isdir("./output/"):
+            os.makedirs("./output/")
+        for idx, detections in enumerate(batch_detections):
+            plt.figure()
+            fig, ax = plt.subplots(1)
+            ax.imshow(images_origin[idx])
+            if detections is not None:
+                unique_labels = detections[:, -1].cpu().unique()
+                n_cls_preds = len(unique_labels)
+                bbox_colors = random.sample(colors, n_cls_preds)
+                for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
+                    color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
+                    # Rescale coordinates to original dimensions
+                    ori_h, ori_w = images_origin[idx].shape[:2]
+                    pre_h, pre_w = config["img_h"], config["img_w"]
+                    box_h = ((y2 - y1) / pre_h) * ori_h
+                    box_w = ((x2 - x1) / pre_w) * ori_w
+                    y1 = (y1 / pre_h) * ori_h
+                    x1 = (x1 / pre_w) * ori_w
+                    # Create a Rectangle patch
+                    bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2,
+                                             edgecolor=color,
+                                             facecolor='none')
+                    # Add the bbox to the plot
+                    ax.add_patch(bbox)
+                    # Add label
+                    plt.text(x1, y1, s=classes[int(cls_pred)], color='white',
+                             verticalalignment='top',
+                             bbox={'color': color, 'pad': 0})
+            # Save generated image with detections
+            plt.axis('off')
+            plt.gca().xaxis.set_major_locator(NullLocator())
+            plt.gca().yaxis.set_major_locator(NullLocator())
+            plt.savefig('output/{}'.format(name), bbox_inches='tight', pad_inches=0.0)
+            plt.close()
+    computation_time = time.time() - start_time
+    cpu = psutil.Process().cpu_percent() / 100
+    complex_yolo_416.append(computation_time * cpu * 2.8)
+    print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
+          .format(round(cpu, 3), round(computation_time, 4)
+                  , round(np.average(response), 4)
+                  , round(np.average(complex_yolo_416), 3)))
+    # logging.info("Save all results to ./output/")
+    return computation_time, cpu * 100
+
+
 class Server:
     def __init__(self, config):
         self.host = None
@@ -59,160 +146,6 @@ class Server:
         self.net = None
         self.pose = None
         self.config = config
-        self.classes = open(self.config["classes_names_path"], "r").read().split("\n")[:-1]
-        try:
-            self.initial_yolo_model()
-            self.initial_pose_model()
-        except Exception as e:
-            print(e.__str__())
-            exit(1)
-        self.complex_yolo_416 = []
-        self.complex_pose_438 = []
-
-    def initial_pose_model(self):
-        w, h = model_wh(self.config["resize"])
-        if w == 0 or h == 0:
-            self.pose = TfPoseEstimator(get_graph_path(self.config["pose_model"]), target_size=(432, 368))
-        else:
-            self.pose = TfPoseEstimator(get_graph_path(self.config["pose_model"]), target_size=(w, h))
-
-    def initial_yolo_model(self):
-        is_training = False
-        # Load and initialize network
-        self.net = ModelMain(config, is_training=is_training)
-        self.net.train(is_training)
-
-        # Set data parallel
-        self.net = nn.DataParallel(self.net)
-        if gpu:
-            self.net = self.net.cuda()
-
-        # Restore pretrain model
-        if self.config["pretrain_snapshot"]:
-            logging.info("load checkpoint from {}".format(self.config["pretrain_snapshot"]))
-            if gpu:
-                state_dict = torch.load(config["pretrain_snapshot"])
-            else:
-                state_dict = torch.load(config["pretrain_snapshot"], map_location=torch.device('cpu'))
-            self.net.load_state_dict(state_dict)
-        else:
-            raise Exception("missing pretrain_snapshot!!!")
-
-        # YOLO loss with 3 scales
-        self.yolo_losses = []
-        for i in range(3):
-            self.yolo_losses.append(YOLOLoss(self.config["yolo"]["anchors"][i],
-                                             self.config["yolo"]["classes"], (self.config["img_w"], self.config["img_h"])))
-
-    def detect_image(self, name, response):
-        start_time = time.time()
-        images_path = [os.path.join(self.config["images_path"], name)]
-        if len(images_path) == 0:
-            raise Exception("no image with name {} found in {}".format(name, self.config["images_path"]))
-
-        # Start inference
-        batch_size = self.config["batch_size"]
-        for step in range(0, len(images_path), batch_size):
-            # preprocess
-            images = []
-            images_origin = []
-            image_sizes = []
-            for path in images_path[step * batch_size: (step + 1) * batch_size]:
-                logging.info("processing: {}".format(path))
-                image = cv2.imread(path, cv2.IMREAD_COLOR)
-                # image_sizes.append(os.path.getsize(path) * 8)
-                if image is None:
-                    logging.error("read path error: {}. skip it.".format(path))
-                    continue
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                images_origin.append(image)  # keep for save result
-                image = cv2.resize(image, (self.config["img_w"], self.config["img_h"]),
-                                   interpolation=cv2.INTER_LINEAR)
-                image = image.astype(np.float32)
-                image /= 255.0
-                image = np.transpose(image, (2, 0, 1))
-                image = image.astype(np.float32)
-                images.append(image)
-            images = np.asarray(images)
-            images = torch.from_numpy(images)
-
-            lock.acquire()
-            # inference
-            with torch.no_grad():
-                outputs = self.net(images)
-                output_list = []
-                for i in range(3):
-                    output_list.append(self.yolo_losses[i](outputs[i]))
-                output = torch.cat(output_list, 1)
-                batch_detections = non_max_suppression(output, self.config["yolo"]["classes"],
-                                                       conf_thres=self.config["confidence_threshold"],
-                                                       nms_thres=0.45)
-            lock.release()
-            # write result images. Draw bounding boxes and labels of detections
-            if not os.path.isdir("./output/"):
-                os.makedirs("./output/")
-            for idx, detections in enumerate(batch_detections):
-                plt.figure()
-                fig, ax = plt.subplots(1)
-                ax.imshow(images_origin[idx])
-                if detections is not None:
-                    unique_labels = detections[:, -1].cpu().unique()
-                    n_cls_preds = len(unique_labels)
-                    bbox_colors = random.sample(colors, n_cls_preds)
-                    for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
-                        color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
-                        # Rescale coordinates to original dimensions
-                        ori_h, ori_w = images_origin[idx].shape[:2]
-                        pre_h, pre_w = self.config["img_h"], self.config["img_w"]
-                        box_h = ((y2 - y1) / pre_h) * ori_h
-                        box_w = ((x2 - x1) / pre_w) * ori_w
-                        y1 = (y1 / pre_h) * ori_h
-                        x1 = (x1 / pre_w) * ori_w
-                        # Create a Rectangle patch
-                        bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2,
-                                                 edgecolor=color,
-                                                 facecolor='none')
-                        # Add the bbox to the plot
-                        ax.add_patch(bbox)
-                        # Add label
-                        plt.text(x1, y1, s=self.classes[int(cls_pred)], color='white',
-                                 verticalalignment='top',
-                                 bbox={'color': color, 'pad': 0})
-                # Save generated image with detections
-                plt.axis('off')
-                plt.gca().xaxis.set_major_locator(NullLocator())
-                plt.gca().yaxis.set_major_locator(NullLocator())
-                plt.savefig('output/{}'.format(name), bbox_inches='tight', pad_inches=0.0)
-                plt.close()
-        computation_time = time.time() - start_time
-        cpu = py.cpu_percent() / 100
-        self.complex_yolo_416.append(computation_time * cpu * 2.8)
-        print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
-              .format(round(cpu,3), round(computation_time,4)
-                      , round(np.average(response),4)
-                      , round(np.average(self.complex_yolo_416), 3)))
-        # logging.info("Save all results to ./output/")
-        return computation_time, cpu * 100
-
-    def detect_pose(self, name, response):
-        start = time.time()
-        images_path = [os.path.join(self.config["images_path"], name)]
-        if len(images_path) == 0:
-            raise Exception("no image with name {} found in {}".format(name, self.config["images_path"]))
-        image_sizes = []
-        for path in images_path:
-            image = common.read_imgfile(path, None, None)
-            humans = self.pose.inference(image, resize_to_default=True, upsample_size=4.0)
-            image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
-            # image_sizes.append(os.path.getsize(path) * 8)
-        computation_time = time.time() - start
-        cpu = py.cpu_percent() / 100
-        self.complex_pose_438.append(computation_time * cpu * 2.8)
-        print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
-              .format(round(cpu, 3), round(computation_time, 4)
-                      , round(np.average(response), 4)
-                      , round(np.average(self.complex_pose_438), 3)))
-        return computation_time, cpu * 100
 
     def run(self, port=3389):
         host = ""
@@ -225,68 +158,138 @@ class Server:
             try:
                 c, addr = self.s.accept()
                 self.c.append(c)
-                start_new_thread(self.client_threaded, (c, addr))
+                # start_new_thread(self.client_threaded, (c, addr))
+                Process(target=client_handler, args=(c, addr, self.config)).start()
                 print("client", addr, "connected")
             except:
                 self.s.close()
                 break
 
-    def recv_msg(self, c):
-        # Read message length and unpack it into an integer
-        raw_msglen = self.recvall(4, c)
-        if not raw_msglen:
+
+def detect_pose(name, pose, response, config, complex_pose_438):
+    start = time.time()
+    images_path = [os.path.join(config["images_path"], name)]
+    if len(images_path) == 0:
+        raise Exception("no image with name {} found in {}".format(name, config["images_path"]))
+    # image_sizes = []
+    for path in images_path:
+        image = common.read_imgfile(path, None, None)
+        humans = pose.inference(image, resize_to_default=True, upsample_size=4.0)
+        image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
+        # image_sizes.append(os.path.getsize(path) * 8)
+    computation_time = time.time() - start
+    cpu = psutil.Process(os.getpid()).cpu_percent() / 100
+    complex_pose_438.append(computation_time * cpu * 2.8)
+    print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
+             .format(round(cpu, 3), round(computation_time, 4)
+                      , round(np.average(response), 4)
+                      , round(np.average(complex_pose_438), 3)))
+    return computation_time, cpu * 100
+
+
+def initial_pose_model(config):
+    w, h = model_wh(config["resize"])
+    if w == 0 or h == 0:
+        pose = TfPoseEstimator(get_graph_path(config["pose_model"]), target_size=(432, 368))
+    else:
+        pose = TfPoseEstimator(get_graph_path(config["pose_model"]), target_size=(w, h))
+    return pose
+
+
+def initial_yolo_model(config, size):
+    is_training = False
+    config.img_w = size
+    config.img_h = size
+    # Load and initialize network
+    net = ModelMain(config, is_training=is_training)
+    net.train(is_training)
+    # Set data parallel
+    net = nn.DataParallel(net)
+    if torch.cuda.is_available():
+        net = net.cuda()
+    # Restore pretrain model
+    if config["pretrain_snapshot"]:
+        if gpu:
+            state_dict = torch.load(config["pretrain_snapshot"])
+        else:
+            state_dict = torch.load(config["pretrain_snapshot"], map_location=torch.device('cpu'))
+        net.load_state_dict(state_dict)
+    else:
+        raise Exception("missing pretrain_snapshot!!!")
+    return net
+
+
+def recv_msg(c):
+    # Read message length and unpack it into an integer
+    raw_msglen = recvall(4, c)
+    if not raw_msglen:
+        return None
+    msglen = struct.unpack('>I', raw_msglen)[0]
+    # Read the message data
+    # print("mes len", msglen)
+    return recvall(msglen, c)
+
+
+def recvall(n, c):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = bytearray()
+    while len(data) < n:
+        packet = c.recv(n - len(data))
+        if not packet:
             return None
-        msglen = struct.unpack('>I', raw_msglen)[0]
-        # Read the message data
-        # print("mes len", msglen)
-        return self.recvall(msglen, c)
+        data.extend(packet)
+    return data
 
-    def recvall(self, n, c):
-        # Helper function to recv n bytes or return None if EOF is hit
-        data = bytearray()
-        while len(data) < n:
-            packet = c.recv(n - len(data))
-            if not packet:
-                return None
-            data.extend(packet)
-        return data
 
-    def send_msg(self, c, msg):
-        # Prefix each message with a 4-byte length (network byte order)
-        msg = struct.pack('>I', len(msg)) + msg
-        c.sendall(msg)
+def send_msg(c, msg):
+    # Prefix each message with a 4-byte length (network byte order)
+    msg = struct.pack('>I', len(msg)) + msg
+    c.sendall(msg)
 
-    def client_threaded(self, c, addr):
-        message = {"code": 1}
-        self.send_msg(c, json.dumps(message).encode("utf-8"))
-        response = []
-        while True:
-            try:
-                res_start = time.time()
-                data = self.recv_msg(c)
-                start = time.time()
-                info = json.loads(str(data.decode('utf-8')))
-                # logging.info(start, info["start"])
-                if info["code"] == 1 and info["name"] is not None:
-                    path = info["name"]
-                    if path is not None:
-                        with open(self.config["images_path"] + path, 'wb') as file:
-                            file.write(base64.b64decode(info["data"]))
-                        if info["app"] == "yolo":
-                            compute_time, cpu = self.detect_image(path, response)
-                        else:
-                            compute_time, cpu = self.detect_pose(path, response)
-                        message = {"code": 2, "time": time.time() - start, "inx": info["inx"], "cpu": cpu,
-                                   "compute_time": compute_time, "path": path, "next": True, "timestamp": info["timestamp"]}
-                        self.send_msg(c, json.dumps(message).encode("utf-8"))
-                        response.append(round(time.time() - res_start, 3))
-                if info["code"] == -1:
-                    c.close()
-                    print(addr, "close")
-                    print(list(response))
-            except Exception as e:
-                print(list(response))
-                return
+
+def client_handler(c, addr, config):
+    message = {"code": 1}
+    send_msg(c, json.dumps(message).encode("utf-8"))
+    yolo_losses = []
+    complex_yolo_416 = []
+    response = []
+    net = None
+    try:
+        classes = open(config["classes_names_path"], "r").read().split("\n")[:-1]
+        for i in range(3):
+            yolo_losses.append(YOLOLoss(config["yolo"]["anchors"][i], config["yolo"]["classes"], (config["img_w"], config["img_h"])))
+    except Exception as e:
+        print(e.__str__())
+        return
+    while True:
+        try:
+            res_start = time.time()
+            data = recv_msg(c)
+            start = time.time()
+            info = json.loads(str(data.decode('utf-8')))
+            if info["code"] == 1 and info["name"] is not None:
+                if info["name"] is not None:
+                    with open(config["images_path"] + info["name"], 'wb') as file:
+                        file.write(base64.b64decode(info["data"]))
+                    if info["app"] == "yolo":
+                        if net is None:
+                            net = initial_yolo_model(config, info["size"])
+                        compute_time, cpu = detect_image(info["name"], response, config, net, yolo_losses, classes, complex_yolo_416)
+                    else:
+                        if net is None:
+                            net = initial_pose_model(config)
+                        compute_time, cpu = detect_pose(info["name"], net, response, config, complex_yolo_416)
+                    message = {"code": 2, "time": time.time() - start, "inx": info["inx"], "cpu": cpu,
+                               "compute_time": compute_time, "path": info["name"], "next": True, "timestamp": info["timestamp"]}
+                    send_msg(c, json.dumps(message).encode("utf-8"))
+                    response.append(round(time.time() - res_start, 3))
+            if info["code"] == -1:
+                c.close()
+                print(addr, "close")
+        except Exception as e:
+            print(e.__str__())
+            return
+    print(list(response))
 
 
 if __name__ == '__main__':

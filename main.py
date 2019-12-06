@@ -517,7 +517,8 @@ if __name__ == "__main__":
     parser.add_argument("--type", type=str, default="png", help="path to weights file")
     parser.add_argument("--rate", type=int, default="10", help="path to weights file")
     parser.add_argument("--app", type=str, default="yolo", help="path to weights file")
-    parser.add_argument("--number", type=int, default="300", help="path to weights file")
+    parser.add_argument("--number", type=int, default="310", help="path to weights file")
+    parser.add_argument("--size", type=int, default="416", help="path to weights file")
     opt = parser.parse_args()
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
