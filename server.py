@@ -287,7 +287,7 @@ def client_handler(c, addr, config):
                 c.close()
                 print(addr, "close")
         except Exception as e:
-            print(e.__str__())
+            print("1." + e.__str__())
             return
     print(list(response))
 
