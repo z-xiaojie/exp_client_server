@@ -44,6 +44,8 @@ import traceback
 pid = os.getpid()
 py = psutil.Process(pid)
 
+os.sched_setaffinity(pid, {0,1,2,3,4,5,6,7})
+
 cmap = plt.get_cmap('tab20b')
 colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
@@ -52,6 +54,11 @@ lock = Lock()
 
 
 def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo_416):
+    p = psutil.Process(os.getpid())
+    if config["img_w"] == 416:
+        p.nice(-19)
+    else:
+        p.nice(-19)
     start_time = time.time()
     images_path = [os.path.join(config["images_path"], name)]
     if len(images_path) == 0:
@@ -159,8 +166,8 @@ class Server:
             try:
                 c, addr = self.s.accept()
                 self.c.append(c)
-                # start_new_thread(self.client_threaded, (c, addr))
-                Process(target=client_handler, args=(c, addr, self.config)).start()
+                start_new_thread(client_handler, (c, addr, self.config))
+                # Process(target=client_handler, args=(c, addr, self.config)).start()
                 print("client", addr, "connected")
             except:
                 self.s.close()
@@ -168,6 +175,8 @@ class Server:
 
 
 def detect_pose(name, pose, response, config, complex_pose_438):
+    p = psutil.Process(os.getpid())
+    p.nice(19)
     start = time.time()
     images_path = [os.path.join(config["images_path"], name)]
     if len(images_path) == 0:
@@ -199,8 +208,8 @@ def initial_pose_model(config):
 
 def initial_yolo_model(config, size):
     is_training = False
-    config["img_w"] = str(size)
-    config["img_h"] = str(size)
+    config["img_w"] = size
+    config["img_h"] = size
     # Load and initialize network
     net = ModelMain(config, is_training=is_training)
     net.train(is_training)
