@@ -39,6 +39,7 @@ import cv2
 import numpy as np
 from tf_pose.estimator import TfPoseEstimator
 from tf_pose.networks import get_graph_path, model_wh
+import traceback
 
 pid = os.getpid()
 py = psutil.Process(pid)
@@ -198,8 +199,8 @@ def initial_pose_model(config):
 
 def initial_yolo_model(config, size):
     is_training = False
-    config.img_w = size
-    config.img_h = size
+    config["img_w"] = str(size)
+    config["img_h"] = str(size)
     # Load and initialize network
     net = ModelMain(config, is_training=is_training)
     net.train(is_training)
@@ -287,7 +288,7 @@ def client_handler(c, addr, config):
                 c.close()
                 print(addr, "close")
         except Exception as e:
-            print("1." + e.__str__())
+            print("1." + traceback.format_exc())
             return
     print(list(response))
 
