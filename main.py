@@ -588,7 +588,7 @@ if __name__ == "__main__":
                         start_transmit = time.perf_counter()
                         send_msg(s, json.dumps(
                             {"app": opt.app, "code": 1, "max_inx": max_inx, "inx": current_img_path_inx,
-                             "data": str_img, "name": img_name,
+                             "data": str_img, "name": img_name, "size": info["size"],
                              "timestamp": current}).encode(
                             "utf-8"))
                         transmission_time.append(time.perf_counter() - start_transmit)
