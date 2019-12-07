@@ -15,6 +15,7 @@ else
 fi
 
 cp main.py /home/zxj/PyTorch-YOLOv3/data/coco/images/Crunch/src/main.py
+
 # git clone https://github.com/z-xiaojie/exp_client_server.git
 # sudo bash exp_client_server/update.sh
 # End

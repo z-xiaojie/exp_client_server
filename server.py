@@ -44,7 +44,7 @@ import traceback
 pid = os.getpid()
 py = psutil.Process(pid)
 
-os.sched_setaffinity(pid, {0,1,2,3,4,5,6,7})
+# os.sched_setaffinity(pid, {0,1,2,3,4,5,6,7})
 
 cmap = plt.get_cmap('tab20b')
 colors = [cmap(i) for i in np.linspace(0, 1, 20)]
@@ -130,7 +130,7 @@ def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo
             plt.savefig('output/{}'.format(name), bbox_inches='tight', pad_inches=0.0)
             plt.close()
     computation_time = time.time() - start_time
-    cpu = psutil.Process(pid).cpu_percent() / 100
+    cpu = psutil.cpu_percent() / 100
     complex_yolo_416.append(computation_time * cpu * 2.8)
     print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
           .format(round(cpu, 3), round(computation_time, 4)
@@ -182,7 +182,7 @@ def detect_pose(name, pose, response, config, complex_pose_438, pid):
         image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
         # image_sizes.append(os.path.getsize(path) * 8)
     computation_time = time.time() - start
-    cpu = psutil.Process(pid).cpu_percent() / 100
+    cpu = psutil.cpu_percent() / 100
     complex_pose_438.append(computation_time * cpu * 2.8)
     print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
              .format(round(cpu, 3), round(computation_time, 4)
