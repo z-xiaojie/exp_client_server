@@ -162,8 +162,8 @@ class Server:
             try:
                 c, addr = self.s.accept()
                 self.c.append(c)
-                # start_new_thread(client_handler, (c, addr, self.config, pid))
-                Process(target=client_handler, args=(c, addr, self.config, pid)).start()
+                start_new_thread(client_handler, (c, addr, self.config, pid))
+                # Process(target=client_handler, args=(c, addr, self.config, pid)).start()
                 print("client", addr, "connected")
             except:
                 self.s.close()
