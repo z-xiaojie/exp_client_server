@@ -151,6 +151,7 @@ class Server:
         self.config = config
 
     def run(self, port=3389):
+        global pid
         host = ""
         port = port
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
