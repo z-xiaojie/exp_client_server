@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 from threading import Lock
 from _thread import *
+from darkflow.net.build import TFNet
 import socket
 import threading
 import struct
@@ -137,7 +138,7 @@ def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo
                   , round(np.average(response), 4)
                   , round(np.average(complex_yolo_416), 3)))
     # logging.info("Save all results to ./output/")
-    return computation_time, cpu * 100
+    return computation_time, cpu * 100, complex_yolo_416
 
 
 class Server:
@@ -188,7 +189,7 @@ def detect_pose(name, pose, response, config, complex_pose_438, pid):
              .format(round(cpu, 3), round(computation_time, 4)
                       , round(np.average(response), 4)
                       , round(np.average(complex_pose_438), 3)))
-    return computation_time, cpu * 100
+    return computation_time, cpu * 100, complex_pose_438
 
 
 def initial_pose_model(config):
@@ -199,6 +200,10 @@ def initial_pose_model(config):
         pose = TfPoseEstimator(get_graph_path(config["pose_model"]), target_size=(w, h))
     return pose
 
+
+def initial_yolo_model_2():
+    options = {"model": "cfg/yolo.cfg", "load": "bin/yolo.weights", "threshold": 0.1}
+    return TFNet(options)
 
 def initial_yolo_model(config, size):
     is_training = False
@@ -275,14 +280,27 @@ def client_handler(c, addr, config, pid):
                 if info["name"] is not None:
                     with open(config["images_path"] + info["name"], 'wb') as file:
                         file.write(base64.b64decode(info["data"]))
-                    if info["app"] == "yolo":
+                    if info["app"] == "yolo3":
                         if net is None:
                             net = initial_yolo_model(config, info["size"])
-                        compute_time, cpu = detect_image(info["name"], response, config, net, yolo_losses, classes, complex_yolo_416, pid)
+                        compute_time, cpu, complex_yolo_416= detect_image(info["name"], response, config, net, yolo_losses, classes, complex_yolo_416, pid)
+                    elif info["app"] == "yolo2":
+                        if net is None:
+                            net = initial_yolo_model_2()
+                        start_yolo_2 = time.time()
+                        img = cv2.imread(os.path.join(config["images_path"], info["name"]))
+                        net.return_predict(img)
+                        compute_time = time.time() - start_yolo_2
+                        cpu = psutil.cpu_percent()
+                        complex_yolo_416.append(compute_time * cpu * 2.8)
+                        print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
+                              .format(round(cpu, 3), round(compute_time, 4)
+                                      , round(np.average(response), 4)
+                                      , round(np.average(complex_yolo_416), 3)))
                     else:
                         if net is None:
                             net = initial_pose_model(config)
-                        compute_time, cpu = detect_pose(info["name"], net, response, config, complex_yolo_416, pid)
+                        compute_time, cpu, complex_yolo_416 = detect_pose(info["name"], net, response, config, complex_yolo_416, pid)
                     message = {"code": 2, "time": time.time() - start, "inx": info["inx"], "cpu": cpu,
                                "compute_time": compute_time, "path": info["name"], "next": True, "timestamp": info["timestamp"]}
                     send_msg(c, json.dumps(message).encode("utf-8"))
