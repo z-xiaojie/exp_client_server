@@ -53,12 +53,7 @@ gpu = True if torch.cuda.is_available() else False
 lock = Lock()
 
 
-def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo_416):
-    p = psutil.Process(os.getpid())
-    if config["img_w"] == 416:
-        p.nice(-19)
-    else:
-        p.nice(-19)
+def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo_416, pid):
     start_time = time.time()
     images_path = [os.path.join(config["images_path"], name)]
     if len(images_path) == 0:
@@ -135,7 +130,7 @@ def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo
             plt.savefig('output/{}'.format(name), bbox_inches='tight', pad_inches=0.0)
             plt.close()
     computation_time = time.time() - start_time
-    cpu = psutil.Process().cpu_percent() / 100
+    cpu = psutil.Process(pid).cpu_percent() / 100
     complex_yolo_416.append(computation_time * cpu * 2.8)
     print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
           .format(round(cpu, 3), round(computation_time, 4)
@@ -166,7 +161,7 @@ class Server:
             try:
                 c, addr = self.s.accept()
                 self.c.append(c)
-                start_new_thread(client_handler, (c, addr, self.config))
+                start_new_thread(client_handler, (c, addr, self.config, pid))
                 # Process(target=client_handler, args=(c, addr, self.config)).start()
                 print("client", addr, "connected")
             except:
@@ -174,9 +169,7 @@ class Server:
                 break
 
 
-def detect_pose(name, pose, response, config, complex_pose_438):
-    p = psutil.Process(os.getpid())
-    p.nice(19)
+def detect_pose(name, pose, response, config, complex_pose_438, pid):
     start = time.time()
     images_path = [os.path.join(config["images_path"], name)]
     if len(images_path) == 0:
@@ -188,7 +181,7 @@ def detect_pose(name, pose, response, config, complex_pose_438):
         image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
         # image_sizes.append(os.path.getsize(path) * 8)
     computation_time = time.time() - start
-    cpu = psutil.Process(os.getpid()).cpu_percent() / 100
+    cpu = psutil.Process(pid).cpu_percent() / 100
     complex_pose_438.append(computation_time * cpu * 2.8)
     print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
              .format(round(cpu, 3), round(computation_time, 4)
@@ -257,7 +250,7 @@ def send_msg(c, msg):
     c.sendall(msg)
 
 
-def client_handler(c, addr, config):
+def client_handler(c, addr, config, pid):
     message = {"code": 1}
     send_msg(c, json.dumps(message).encode("utf-8"))
     yolo_losses = []
@@ -284,11 +277,11 @@ def client_handler(c, addr, config):
                     if info["app"] == "yolo":
                         if net is None:
                             net = initial_yolo_model(config, info["size"])
-                        compute_time, cpu = detect_image(info["name"], response, config, net, yolo_losses, classes, complex_yolo_416)
+                        compute_time, cpu = detect_image(info["name"], response, config, net, yolo_losses, classes, complex_yolo_416, pid)
                     else:
                         if net is None:
                             net = initial_pose_model(config)
-                        compute_time, cpu = detect_pose(info["name"], net, response, config, complex_yolo_416)
+                        compute_time, cpu = detect_pose(info["name"], net, response, config, complex_yolo_416, pid)
                     message = {"code": 2, "time": time.time() - start, "inx": info["inx"], "cpu": cpu,
                                "compute_time": compute_time, "path": info["name"], "next": True, "timestamp": info["timestamp"]}
                     send_msg(c, json.dumps(message).encode("utf-8"))
