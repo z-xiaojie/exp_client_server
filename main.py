@@ -480,8 +480,8 @@ def send_helper(s, opt, all_path):
                 # s.close()
                 break
             if opt.deadline > 0:
-                while time.time() - current < 1. * opt.deadline / 1000:
-                    pass
+                if time.time() - current < 1. * opt.deadline / 1000:
+                    time.sleep(time.time() - current - 1. * opt.deadline / 1000)
                 # print(time.time() - current)
                 # time.sleep(1. * opt.deadline / 1000 - (time.perf_counter() - current))
         except Exception as e:

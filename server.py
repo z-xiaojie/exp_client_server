@@ -132,7 +132,7 @@ def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo
             plt.close()
     computation_time = time.time() - start_time
     cpu = psutil.cpu_percent() / 100
-    complex_yolo_416.append(computation_time * cpu * 2.8)
+    complex_yolo_416.append(computation_time * cpu * 2.8 * 8)
     print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
           .format(round(cpu, 3), round(computation_time, 4)
                   , round(np.average(response), 4)
