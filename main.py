@@ -538,7 +538,8 @@ if __name__ == "__main__":
     if opt.deadline > 0:
         start_new_thread(recv_helper, (s, opt, all_path))
         # start_new_thread(send_helper, (s, opt, all_path))
-        threading.Timer(opt.deadline, send_helper, (s, opt, all_path)).start()
+        timer = threading.Timer(opt.deadline/1000, send_helper, [s, opt, all_path])
+        timer.start()
         while True:
             d = 1
     else:
