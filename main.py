@@ -70,7 +70,7 @@ response = []
 rate = []
 compute_time = []
 transmission_time = []
-
+current_img_path_inx = 0
 release = True
 
 # ///////////////////////
@@ -446,52 +446,43 @@ def recv_helper(s, opt, all_path):
 
 # 28880
 def send_helper(s, opt, all_path):
-    current_img_path_inx = 0
+    global current_img_path_inx
     max_inx = opt.number
-    while True:
-        try:
-            current = time.time()
-            if current_img_path_inx < max_inx:
-                img_name = "p" + str(int(time.time())) + "_" + str(current_img_path_inx) + ".png"
-                # print(current_img_path_inx, "compressing", all_path[current_img_path_inx])
-                name = all_path[current_img_path_inx]
-                if int(opt.max) < 100:
-                    saved_path = optimize_png(current_img_path_inx, opt.dir + "/" + name,
-                                              str(opt.min + "-" + opt.max),
-                                              str(opt.min + "_" + opt.max)
-                                              , opt.speed, opt.save_dir)
-                else:
-                    saved_path = opt.dir + "/" + name
-                with open(saved_path, 'rb') as file:
-                    data = file.read()
-                str_img = base64.encodebytes(data).decode("utf-8")
-                # start_transmit = time.perf_counter()
-                send_msg(s, json.dumps(
-                    {"app": opt.app, "code": 1, "max_inx": max_inx, "inx": current_img_path_inx,
-                     "data": str_img, "name": img_name, "size": opt.size,
-                     "timestamp": current, "start": time.time()}).encode(
-                    "utf-8"))
-                # transmission_time.append(time.perf_counter() - start_transmit)
-                file_size = os.path.getsize(saved_path) / 1024
-                avg_size.append(file_size)
-                current_img_path_inx += 1
+    try:
+        current = time.time()
+        if current_img_path_inx < max_inx:
+            img_name = "p" + str(int(time.time())) + "_" + str(current_img_path_inx) + ".png"
+            # print(current_img_path_inx, "compressing", all_path[current_img_path_inx])
+            name = all_path[current_img_path_inx]
+            if int(opt.max) < 100:
+                saved_path = optimize_png(current_img_path_inx, opt.dir + "/" + name,
+                                          str(opt.min + "-" + opt.max),
+                                          str(opt.min + "_" + opt.max)
+                                          , opt.speed, opt.save_dir)
             else:
-                send_msg(s, json.dumps({"code": -1}).encode("utf-8"))
-                # s.close()
-                break
-            # if opt.deadline > 0:
-            #    if time.time() - current < 1. * opt.deadline / 1000:
-            #       time.sleep(time.time() - current - 1. * opt.deadline / 1000)
-                # print(time.time() - current)
-                # time.sleep(1. * opt.deadline / 1000 - (time.perf_counter() - current))
-        except Exception as e:
+                saved_path = opt.dir + "/" + name
+            with open(saved_path, 'rb') as file:
+                data = file.read()
+            str_img = base64.encodebytes(data).decode("utf-8")
+            # start_transmit = time.perf_counter()
+            send_msg(s, json.dumps(
+                {"app": opt.app, "code": 1, "max_inx": max_inx, "inx": current_img_path_inx,
+                 "data": str_img, "name": img_name, "size": opt.size,
+                 "timestamp": current, "start": time.time()}).encode(
+                "utf-8"))
+            # transmission_time.append(time.perf_counter() - start_transmit)
+            file_size = os.path.getsize(saved_path) / 1024
+            avg_size.append(file_size)
+            current_img_path_inx += 1
+        else:
             send_msg(s, json.dumps({"code": -1}).encode("utf-8"))
-            s.close()
-            print(e.__str__())
-            print("2 res=", list(np.array(response)))
-            break
-    print("all sent")
-    print("res=", list(np.array(response[:300])))
+    except Exception as e:
+        send_msg(s, json.dumps({"code": -1}).encode("utf-8"))
+        s.close()
+        print(e.__str__())
+        print("2 res=", list(np.array(response)))
+    # print("all sent")
+    # print("res=", list(np.array(response[:300])))
 
 import argparse
 import socket
