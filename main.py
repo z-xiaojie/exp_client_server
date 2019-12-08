@@ -529,10 +529,10 @@ if __name__ == "__main__":
     if opt.deadline > 0:
         start_new_thread(recv_helper, (s, opt, all_path))
         # start_new_thread(send_helper, (s, opt, all_path))
-        timer = threading.Timer(opt.deadline/1000, send_helper, [s, opt, all_path])
-        timer.start()
-        while True:
-            d = 1
+        while current_img_path_inx < opt.number:
+            timer = threading.Timer(opt.deadline / 1000, send_helper, [s, opt, all_path])
+            timer.start()
+            time.sleep(opt.deadline / 1000)
     else:
         current_img_path_inx = 0
         max_inx = 300
