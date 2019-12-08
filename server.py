@@ -132,8 +132,8 @@ def detect_image(name, response, config, net, yolo_losses, classes, complex_yolo
             plt.close()
     computation_time = time.time() - start_time
     cpu = psutil.cpu_percent() / 100
-    complex_yolo_416.append(computation_time * cpu * 2.8 * 8)
-    print("\tyolo + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
+    complex_yolo_416.append(computation_time * cpu * 2.8)
+    print("\tyolo3 + {} finished in {}s, system response in {} s, cpu in {}  cycles (10^9)"
           .format(round(cpu, 3), round(computation_time, 4)
                   , round(np.average(response), 4)
                   , round(np.average(complex_yolo_416), 3)))
@@ -291,9 +291,9 @@ def client_handler(c, addr, config, pid):
                         img = cv2.imread(os.path.join(config["images_path"], info["name"]))
                         net.return_predict(img)
                         compute_time = time.time() - start_yolo_2
-                        cpu = psutil.cpu_percent()
+                        cpu = psutil.cpu_percent()/100
                         complex_yolo_416.append(compute_time * cpu * 2.8)
-                        print("\tpose + {} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
+                        print("\tyolo2} finished in {}s, system response in {} s, cpu in {} cycles(10^9)"
                               .format(round(cpu, 3), round(compute_time, 4)
                                       , round(np.average(response), 4)
                                       , round(np.average(complex_yolo_416), 3)))
