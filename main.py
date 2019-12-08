@@ -421,7 +421,10 @@ def recv_helper(s, opt, all_path):
                     response.append(this_response)
                     compute_time.append(info["compute_time"])
                     # transmission_time.append(info["transmit"])
-                    transmission_time.append(this_response - info["time"] - avg_processing_time[-1])
+                    if len(avg_processing_time) > 0:
+                        transmission_time.append(this_response - info["time"] - avg_processing_time[-1])
+                    else:
+                        transmission_time.append(this_response - info["time"])
                     avg_complexity_yolo.append(avg_size[-1] * 1024 * 8)
                     if len(response) > 0:
                         print(
