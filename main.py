@@ -416,7 +416,8 @@ def recv_helper(s, opt, all_path):
                 if info["code"] == 2:
                     # timestamp = info["timestamp"]
                     cpu_utilization.append(info["cpu"])
-                    this_response = round(avg_processing_time[-1] + info["time"] + avg_size[-1]/rate, 3)
+                    # this_response = round(avg_processing_time[-1] + info["time"] + avg_size[-1]/rate, 3)
+                    this_response = round(time.time() - info["timestamp"], 3)
                     response.append(this_response)
                     compute_time.append(info["compute_time"])
                     # transmission_time.append(info["transmit"])
