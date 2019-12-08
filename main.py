@@ -7,7 +7,7 @@ import struct
 import subprocess
 import time
 from subprocess import CalledProcessError
-
+import threading
 from multiprocessing import Lock, Pool, cpu_count
 
 # Locks
@@ -479,9 +479,9 @@ def send_helper(s, opt, all_path):
                 send_msg(s, json.dumps({"code": -1}).encode("utf-8"))
                 # s.close()
                 break
-            if opt.deadline > 0:
-                if time.time() - current < 1. * opt.deadline / 1000:
-                    time.sleep(time.time() - current - 1. * opt.deadline / 1000)
+            # if opt.deadline > 0:
+            #    if time.time() - current < 1. * opt.deadline / 1000:
+            #       time.sleep(time.time() - current - 1. * opt.deadline / 1000)
                 # print(time.time() - current)
                 # time.sleep(1. * opt.deadline / 1000 - (time.perf_counter() - current))
         except Exception as e:
@@ -538,7 +538,7 @@ if __name__ == "__main__":
     if opt.deadline > 0:
         start_new_thread(recv_helper, (s, opt, all_path))
         # start_new_thread(send_helper, (s, opt, all_path))
-
+        threading.Timer(opt.deadline, send_helper, (s, opt, all_path))
         while True:
             d = 1
     else:
