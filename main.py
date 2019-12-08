@@ -546,7 +546,7 @@ if __name__ == "__main__":
                 if info["code"] == 2 or info["code"] == 1:
                     if info["code"] == 2:
                         timestamp = info["timestamp"]
-                        response.append(round(time.perf_counter() - timestamp - info["time"] + info["compute_time"], 3))
+                        response.append(round(time.perf_counter() - timestamp, 3))
                         # transmission = time.perf_counter() - timestamp - info["time"]
                         # transmission_time.append(transmission)
                         avg_complexity_yolo.append(avg_size[-1] * 1024 * 8)
